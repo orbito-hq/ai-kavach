@@ -1,0 +1,101 @@
+rules:
+  - id: python-command-injection
+    languages: [python]
+    severity: ERROR
+    message: >-
+      User-controlled or unsanitized input may reach a shell command,
+      enabling OS command injection.
+    metadata:
+      cwe: ["CWE-78: OS Command Injection"]
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.call(..., shell=True, ...)
+          - pattern: subprocess.Popen(..., shell=True, ...)
+          - pattern: os.system(...)
+          - pattern: os.popen(...)
+
+  - id: python-path-traversal
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Building a file path from unvalidated input can allow path traversal
+      to read or write files outside the intended directory.
+    metadata:
+      cwe: ["CWE-22: Path Traversal"]
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: open(os.path.join($BASE, $USER_INPUT), ...)
+          - pattern: open($USER_INPUT, ...)
+
+  - id: python-sql-injection
+    languages: [python]
+    severity: ERROR
+    message: >-
+      SQL query built via string formatting/concatenation instead of
+      parameterized queries, enabling SQL injection.
+    metadata:
+      cwe: ["CWE-89: SQL Injection"]
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: $CURSOR.execute("..." % (...))
+          - pattern: $CURSOR.execute("..." + ... + "...")
+          - pattern: $CURSOR.execute(f"...")
+
+  - id: python-eval-exec
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Use of eval/exec on data that may be attacker-influenced allows
+      arbitrary code execution.
+    metadata:
+      cwe: ["CWE-95: Eval Injection"]
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+
+  - id: python-insecure-deserialization
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Deserializing untrusted data with pickle/yaml.load can lead to
+      arbitrary code execution.
+    metadata:
+      cwe: ["CWE-502: Deserialization of Untrusted Data"]
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: pickle.load(...)
+          - pattern: pickle.loads(...)
+          - pattern: yaml.load(...)
+
+  - id: js-command-injection
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      User-controlled input may reach a shell command, enabling OS command
+      injection.
+    metadata:
+      cwe: ["CWE-78: OS Command Injection"]
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: child_process.exec($CMD, ...)
+          - pattern: exec($CMD, ...)
+
+  - id: js-eval
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      Use of eval on data that may be attacker-influenced allows arbitrary
+      code execution.
+    metadata:
+      cwe: ["CWE-95: Eval Injection"]
+      confidence: MEDIUM
+    patterns:
+      - pattern: eval(...)
