@@ -32,3 +32,7 @@ export function getScan(scanId) {
 export function getFindings(scanId) {
   return request(`/scans/${scanId}/findings`);
 }
+
+export function getScanLogs(scanId) {
+  return request(`/scans/${scanId}/logs`);
+}

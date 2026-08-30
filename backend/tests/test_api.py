@@ -3,7 +3,7 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
-from app import db, main
+from app import db, main, reasoner
 
 
 def make_zip_bytes(files: dict) -> bytes:
@@ -18,6 +18,10 @@ def test_full_scan_lifecycle_via_api(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "kavach.db")
     monkeypatch.setattr(main.db, "DB_PATH", tmp_path / "kavach.db")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEYS", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    reasoner.reset_gemini_pool()
 
     from app import intake
     monkeypatch.setattr(intake, "WORKSPACE_ROOT", tmp_path / "workspaces")

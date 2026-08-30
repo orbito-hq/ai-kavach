@@ -22,12 +22,18 @@ def run_semgrep(target_dir: Path, timeout: int = 300) -> list[dict]:
     """Run semgrep against a bundled offline ruleset and return normalized
     findings. A local rule file is used (rather than --config=auto) so scans
     are reproducible and don't depend on network access to the Semgrep
-    registry (Level 18 reproducibility goal)."""
+    registry (Level 18 reproducibility goal).
+
+    --no-git-ignore is required because semgrep walks upward looking for a
+    .gitignore even when the scanned target itself isn't a git repo — our
+    own workspaces/ directory is gitignored in this project's own
+    .gitignore, which would otherwise cause every scan to silently return
+    zero findings."""
     try:
         result = subprocess.run(
             [
                 "semgrep", "scan", f"--config={RULES_PATH}", "--json", "--quiet",
-                "--metrics=off", str(target_dir),
+                "--metrics=off", "--no-git-ignore", str(target_dir),
             ],
             capture_output=True, text=True, timeout=timeout,
         )

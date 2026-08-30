@@ -1,16 +1,79 @@
-from pathlib import Path
+import httpx
+import pytest
 
 from app import reasoner
+from app.llm import gemini
 
 
-def test_analyze_finding_skips_llm_without_api_key(monkeypatch, tmp_path):
+@pytest.fixture(autouse=True)
+def _clear_env_and_pool(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEYS", raising=False)
+    # keep failure-path tests fast: small backoff instead of the real ~60s cap
+    monkeypatch.setattr(gemini, "MAX_BACKOFF_SECONDS", 0.05)
+    monkeypatch.setattr(gemini, "BASE_BACKOFF_SECONDS", 0.01)
+    reasoner.reset_gemini_pool()
+    yield
+    reasoner.reset_gemini_pool()
+
+
+async def test_analyze_finding_skips_llm_without_any_key(tmp_path):
     finding = {"file": "a.py", "line": 1, "type": "x", "rule": "r", "severity": "LOW"}
 
-    result = reasoner.analyze_finding(finding, tmp_path)
+    result = await reasoner.analyze_finding(finding, tmp_path)
 
     assert result["ai_verdict"] == "NEEDS_TESTING"
     assert "skipped" in result["ai_explanation"].lower()
+
+
+async def test_analyze_finding_uses_gemini_when_configured(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    finding = {"file": "a.py", "line": 1, "type": "x", "rule": "r", "severity": "LOW"}
+
+    async def fake_post(self, url, headers=None, json=None):
+        request = httpx.Request("POST", url)
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {"content": {"parts": [{"text": "VERDICT: CONFIRMED\nEXPLANATION: root cause found"}]}}
+                ]
+            },
+            request=request,
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    result = await reasoner.analyze_finding(finding, tmp_path)
+
+    assert result["ai_verdict"] == "CONFIRMED"
+    assert result["ai_explanation"] == "root cause found"
+
+
+async def test_analyze_finding_reports_gemini_failure_without_crashing(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    finding = {"file": "a.py", "line": 1, "type": "x", "rule": "r", "severity": "LOW"}
+
+    async def fake_post(self, url, headers=None, json=None):
+        request = httpx.Request("POST", url)
+        return httpx.Response(500, json={}, request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    result = await reasoner.analyze_finding(finding, tmp_path)
+
+    assert result["ai_verdict"] == "NEEDS_TESTING"
+    assert "failed" in result["ai_explanation"].lower()
+
+
+def test_max_concurrency_scales_with_gemini_key_count(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEYS", "a,b,c")
+    assert reasoner.max_concurrency() == 3
+
+
+def test_max_concurrency_defaults_without_gemini():
+    assert reasoner.max_concurrency() == 4
 
 
 def test_parse_response_extracts_verdict_and_explanation():

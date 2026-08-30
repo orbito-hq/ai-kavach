@@ -4,8 +4,10 @@ from datetime import datetime, timezone
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import db
-from app.pipeline import run_scan
+from app import db, queue
+from app.pipeline.build import build_orchestrator
+from app.pipeline.context import ScanContext
+from app.pipeline.logging_utils import get_scan_logger, read_scan_log
 
 app = FastAPI(title="AI Kavach", version="0.1.0")
 
@@ -38,9 +40,19 @@ async def create_scan(
     zip_bytes = await file.read() if file else None
 
     db.create_scan(scan_id, source, datetime.now(timezone.utc).isoformat())
-    background_tasks.add_task(run_scan, scan_id, source, zip_bytes, repo_url)
 
-    return {"scan_id": scan_id, "status": "PENDING"}
+    if queue.is_enabled():
+        queue.enqueue_scan(scan_id, source, zip_bytes, repo_url)
+        backend = "redis"
+    else:
+        ctx = ScanContext(
+            scan_id=scan_id, source=source, zip_bytes=zip_bytes, repo_url=repo_url,
+            logger=get_scan_logger(scan_id),
+        )
+        background_tasks.add_task(build_orchestrator().run, ctx)
+        backend = "inline"
+
+    return {"scan_id": scan_id, "status": "PENDING", "queue": backend}
 
 
 @app.get("/api/scans")
@@ -61,6 +73,13 @@ def get_findings(scan_id: str):
     if not db.get_scan(scan_id):
         raise HTTPException(404, "Scan not found")
     return db.list_findings(scan_id)
+
+
+@app.get("/api/scans/{scan_id}/logs")
+def get_scan_logs(scan_id: str):
+    if not db.get_scan(scan_id):
+        raise HTTPException(404, "Scan not found")
+    return {"log": read_scan_log(scan_id)}
 
 
 @app.get("/api/findings/{finding_id}")

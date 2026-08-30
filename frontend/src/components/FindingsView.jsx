@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getScanLogs } from "../api.js";
 
 const VERDICT_LABELS = {
   CONFIRMED: "Confirmed",
@@ -8,16 +9,33 @@ const VERDICT_LABELS = {
 
 export default function FindingsView({ scan, findings }) {
   const [selected, setSelected] = useState(null);
+  const [showLogs, setShowLogs] = useState(false);
+  const [logText, setLogText] = useState("");
 
   if (!scan) {
     return <div className="findings-view muted">Select or start a scan to see results.</div>;
+  }
+
+  async function openLogs() {
+    setShowLogs(true);
+    try {
+      const { log } = await getScanLogs(scan.id);
+      setLogText(log || "(no log output yet)");
+    } catch (err) {
+      setLogText(`Failed to load logs: ${err.message}`);
+    }
   }
 
   return (
     <div className="findings-view">
       <div className="scan-header">
         <h2>{scan.source}</h2>
-        <span className={`status-badge ${scan.status.toLowerCase()}`}>{scan.status}</span>
+        <div className="scan-header-actions">
+          <button className="link-button" onClick={openLogs}>
+            View Logs
+          </button>
+          <span className={`status-badge ${scan.status.toLowerCase()}`}>{scan.status}</span>
+        </div>
       </div>
 
       {scan.status === "FAILED" && <p className="error">{scan.error}</p>}
@@ -63,6 +81,7 @@ export default function FindingsView({ scan, findings }) {
       </table>
 
       {selected && <FindingDetail finding={selected} onClose={() => setSelected(null)} />}
+      {showLogs && <LogViewer text={logText} onClose={() => setShowLogs(false)} />}
     </div>
   );
 }
@@ -95,6 +114,20 @@ function FindingDetail({ finding, onClose }) {
 
         <h4>AI Analysis — {VERDICT_LABELS[finding.ai_verdict] ?? finding.ai_verdict}</h4>
         <p>{finding.ai_explanation}</p>
+      </div>
+    </div>
+  );
+}
+
+function LogViewer({ text, onClose }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button className="close" onClick={onClose}>
+          ×
+        </button>
+        <h3>Scan Log</h3>
+        <pre className="log-output">{text}</pre>
       </div>
     </div>
   );

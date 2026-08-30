@@ -1,0 +1,28 @@
+# Dev-only infrastructure dependency. The app itself (backend/frontend)
+# still runs directly via nix-shell — this just gives it a Redis instance to
+# talk to when REDIS_URL is set, for the consumer/worker queue
+# (app/queue.py). Without this running, the API falls back to running scans
+# inline (no Redis required) — see TODO.md.
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ai-kavach-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"  # 6379 was already in use by another project on this machine
+    networks:
+      - kavach-net
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+networks:
+  kavach-net:
+    driver: bridge
+
+volumes:
+  redis-data:
